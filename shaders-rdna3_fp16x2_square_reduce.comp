@@ -1,0 +1,35 @@
+// 해당코드는 Codex로 수정됨
+#version 460
+
+#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+// Each uint stores two IEEE 754 binary16 values.
+layout(set = 0, binding = 0, std430) readonly buffer InputBuffer {
+    uint packedData[];
+};
+
+layout(set = 0, binding = 1, std430) writeonly buffer OutputBuffer {
+    float resultData[];
+};
+
+layout(push_constant, std430) uniform DispatchInfo {
+    uint elementCount;
+} dispatchInfo;
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx >= dispatchInfo.elementCount) {
+        return;
+    }
+
+    // unpackHalf2x16 returns FP32 vec2. Convert explicitly to FP16 before
+    // multiplication so the multiply result remains a two-lane FP16 value.
+    vec2 unpackedF32 = unpackHalf2x16(packedData[idx]);
+    f16vec2 valuesF16 = f16vec2(unpackedF32);
+    f16vec2 squaredF16 = valuesF16 * valuesF16;
+
+    // Promote the two FP16 products and perform the reduction in FP32.
+    resultData[idx] = float(squaredF16.x) + float(squaredF16.y);
+}
